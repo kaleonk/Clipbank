@@ -10,7 +10,9 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: '/(.*)',
+        // COEP/COOP only on dashboard — required for FFmpeg WASM (SharedArrayBuffer)
+        // Do NOT apply to login page or auth routes — breaks Supabase OAuth redirect
+        source: '/dashboard/:path*',
         headers: [
           { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
