@@ -21,7 +21,7 @@ export default async function Dashboard() {
       .eq('user_id', user.id)
     initialFavorites = data?.map((r: { clip_id: string }) => r.clip_id) ?? []
   } catch {
-    // table may not exist yet — favorites silently disabled
+    // table may not exist yet
   }
 
   return (
