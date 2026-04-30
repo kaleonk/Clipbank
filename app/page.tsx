@@ -7,11 +7,11 @@ export default function Home() {
 
   async function loginWithTwitch() {
     await supabase.auth.signInWithOAuth({
-      provider: 'twitch',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
+  provider: 'twitch',
+  options: {
+    redirectTo: `${window.location.origin}/auth/callback`
+  }
+})
   }
 
   return (
