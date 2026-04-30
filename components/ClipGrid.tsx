@@ -126,7 +126,7 @@ export default function ClipGrid({
       }
 
       const data = await ffmpeg.readFile('output.mp4') as Uint8Array
-      const blob = new Blob([data.buffer], { type: 'video/mp4' })
+      const blob = new Blob([data.buffer as ArrayBuffer], { type: 'video/mp4' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
