@@ -73,7 +73,7 @@ export default function PreviewActions({
       }
 
       const data = await ffmpeg.readFile('output.mp4') as Uint8Array
-      const blob = new Blob([data], { type: 'video/mp4' })
+      const blob = new Blob([data.buffer], { type: 'video/mp4' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
