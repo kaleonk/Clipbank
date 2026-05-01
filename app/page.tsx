@@ -17,10 +17,17 @@ export default function Home() {
     setError(null)
     setLoading(true)
     const supabase = createClient()
+    const currentOrigin = window.location.origin
+    const isLocalhost =
+      currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')
+    const productionOrigin =
+      (process.env.NEXT_PUBLIC_SITE_URL || 'https://clipbank.vercel.app').replace(/\/$/, '')
+    const redirectOrigin = isLocalhost ? currentOrigin : productionOrigin
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'twitch',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${redirectOrigin}/auth/callback`,
       },
     })
     if (error) {
