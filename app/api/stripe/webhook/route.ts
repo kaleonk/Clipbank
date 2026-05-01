@@ -51,9 +51,16 @@ export async function POST(request: NextRequest) {
         const customerId = session.customer as string
         const subscriptionId = session.subscription as string
 
-        // Fetch full subscription to get period end + status
-        const sub = await stripe.subscriptions.retrieve(subscriptionId)
-        await upsertSubscription(userId, customerId, subscriptionId, sub.status, sub.current_period_end)
+        // FIX: Cast as Stripe.Subscription to avoid the 'DeletedSubscription' type error
+        const sub = await stripe.subscriptions.retrieve(subscriptionId) as Stripe.Subscription
+        
+        await upsertSubscription(
+          userId, 
+          customerId, 
+          subscriptionId, 
+          sub.status, 
+          sub.current_period_end
+        )
         break
       }
 
@@ -75,7 +82,11 @@ export async function POST(request: NextRequest) {
         const sub = event.data.object as Stripe.Subscription
         await supabaseAdmin
           .from('subscriptions')
-          .update({ tier: 'free', status: 'canceled', updated_at: new Date().toISOString() })
+          .update({ 
+            tier: 'free', 
+            status: 'canceled', 
+            updated_at: new Date().toISOString() 
+          })
           .eq('stripe_subscription_id', sub.id)
         break
       }
