@@ -1,15 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { createClient } from '@supabase/supabase-js'
 import type Stripe from 'stripe'
 
-// Bypass RLS — webhook runs outside user session
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing Supabase admin environment variables for Stripe webhook')
+  }
+
+  // Webhooks run outside user sessions, so service-role client is required.
+  return createClient(supabaseUrl, serviceRoleKey)
+}
 
 async function upsertSubscription(
+  supabaseAdmin: any,
   userId: string,
   customerId: string,
   subscriptionId: string,
@@ -29,6 +36,7 @@ async function upsertSubscription(
 }
 
 export async function POST(request: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin()
   const body = await request.text()
   const sig = request.headers.get('stripe-signature')
 
@@ -52,12 +60,13 @@ export async function POST(request: NextRequest) {
         const subscriptionId = session.subscription as string
 
         const sub = await stripe.subscriptions.retrieve(subscriptionId)
-        
+
         await upsertSubscription(
-          userId, 
-          customerId, 
-          subscriptionId, 
-          sub.status, 
+          supabaseAdmin,
+          userId,
+          customerId,
+          subscriptionId,
+          sub.status,
           // @ts-ignore
           sub.current_period_end
         )
@@ -69,6 +78,7 @@ export async function POST(request: NextRequest) {
         const userId = sub.metadata?.user_id
         if (!userId) break
         await upsertSubscription(
+          supabaseAdmin,
           userId,
           sub.customer as string,
           sub.id,
@@ -83,10 +93,10 @@ export async function POST(request: NextRequest) {
         const sub = event.data.object as Stripe.Subscription
         await supabaseAdmin
           .from('subscriptions')
-          .update({ 
-            tier: 'free', 
-            status: 'canceled', 
-            updated_at: new Date().toISOString() 
+          .update({
+            tier: 'free',
+            status: 'canceled',
+            updated_at: new Date().toISOString()
           })
           .eq('stripe_subscription_id', sub.id)
         break
