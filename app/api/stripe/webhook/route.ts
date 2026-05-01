@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { createClient } from '@supabase/supabase-js'
-import type Stripe from 'stripe'
+import Stripe from 'stripe'
 
 // Bypass RLS — webhook runs outside user session
 const supabaseAdmin = createClient(
@@ -17,6 +17,7 @@ async function upsertSubscription(
   periodEnd: number
 ) {
   const tier = status === 'active' || status === 'trialing' ? 'pro' : 'free'
+  
   await supabaseAdmin.from('subscriptions').upsert({
     user_id: userId,
     stripe_customer_id: customerId,
@@ -47,11 +48,13 @@ export async function POST(request: NextRequest) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
         if (session.mode !== 'subscription') break
+        
         const userId = session.client_reference_id!
         const customerId = session.customer as string
         const subscriptionId = session.subscription as string
 
-        // FIX: Cast as Stripe.Subscription to avoid the 'DeletedSubscription' type error
+        // Retrieve the subscription to get the current_period_end
+        // We cast to Stripe.Subscription to ensure TypeScript recognizes the properties
         const sub = await stripe.subscriptions.retrieve(subscriptionId) as Stripe.Subscription
         
         await upsertSubscription(
@@ -65,36 +68,11 @@ export async function POST(request: NextRequest) {
       }
 
       case 'customer.subscription.updated': {
+        // event.data.object can be a union type, so we explicitly cast it to Stripe.Subscription
         const sub = event.data.object as Stripe.Subscription
+        
         const userId = sub.metadata?.user_id
         if (!userId) break
+
         await upsertSubscription(
-          userId,
-          sub.customer as string,
-          sub.id,
-          sub.status,
-          sub.current_period_end
-        )
-        break
-      }
-
-      case 'customer.subscription.deleted': {
-        const sub = event.data.object as Stripe.Subscription
-        await supabaseAdmin
-          .from('subscriptions')
-          .update({ 
-            tier: 'free', 
-            status: 'canceled', 
-            updated_at: new Date().toISOString() 
-          })
-          .eq('stripe_subscription_id', sub.id)
-        break
-      }
-    }
-  } catch (err) {
-    console.error('[webhook] handler error:', err)
-    return NextResponse.json({ error: 'Handler failed' }, { status: 500 })
-  }
-
-  return NextResponse.json({ received: true })
-}
+         |
