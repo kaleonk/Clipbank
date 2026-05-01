@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { createClient } from '@supabase/supabase-js'
-import Stripe from 'stripe'
+import type Stripe from 'stripe'
 
 // Bypass RLS — webhook runs outside user session
 const supabaseAdmin = createClient(
@@ -17,7 +17,6 @@ async function upsertSubscription(
   periodEnd: number
 ) {
   const tier = status === 'active' || status === 'trialing' ? 'pro' : 'free'
-  
   await supabaseAdmin.from('subscriptions').upsert({
     user_id: userId,
     stripe_customer_id: customerId,
@@ -48,21 +47,19 @@ export async function POST(request: NextRequest) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
         if (session.mode !== 'subscription') break
-        
         const userId = session.client_reference_id!
         const customerId = session.customer as string
         const subscriptionId = session.subscription as string
 
-        // Retrieve the subscription
-        const sub = await stripe.subscriptions.retrieve(subscriptionId) as Stripe.Subscription
+        const sub = await stripe.subscriptions.retrieve(subscriptionId)
         
         await upsertSubscription(
           userId, 
           customerId, 
           subscriptionId, 
           sub.status, 
-          // FIX: Cast to 'any' to bypass the type conflict error
-          (sub as any).current_period_end
+          // @ts-ignore
+          sub.current_period_end
         )
         break
       }
@@ -71,21 +68,19 @@ export async function POST(request: NextRequest) {
         const sub = event.data.object as Stripe.Subscription
         const userId = sub.metadata?.user_id
         if (!userId) break
-
         await upsertSubscription(
           userId,
           sub.customer as string,
           sub.id,
           sub.status,
-          // FIX: Cast to 'any' here as well to be safe
-          (sub as any).current_period_end
+          // @ts-ignore
+          sub.current_period_end
         )
         break
       }
 
       case 'customer.subscription.deleted': {
         const sub = event.data.object as Stripe.Subscription
-        
         await supabaseAdmin
           .from('subscriptions')
           .update({ 
