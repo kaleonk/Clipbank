@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { toBlobURL } from '@ffmpeg/util'
 
@@ -16,24 +16,59 @@ export default function PreviewActions({
   const [isProcessing, setIsProcessing] = useState(false)
   const [status, setStatus] = useState('')
   const ffmpegRef = useRef<FFmpeg | null>(null)
+  const ffmpegLoadingRef = useRef<Promise<FFmpeg> | null>(null)
 
   async function loadFFmpeg(): Promise<FFmpeg> {
     if (ffmpegRef.current) return ffmpegRef.current
-    const ffmpeg = new FFmpeg()
-    ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message))
-    const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
-    })
-    ffmpegRef.current = ffmpeg
-    return ffmpeg
+    if (ffmpegLoadingRef.current) return ffmpegLoadingRef.current
+
+    ffmpegLoadingRef.current = (async () => {
+      const ffmpeg = new FFmpeg()
+      ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message))
+      const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
+      })
+      ffmpegRef.current = ffmpeg
+      return ffmpeg
+    })()
+
+    return ffmpegLoadingRef.current
+  }
+
+  useEffect(() => {
+    const preload = () => {
+      void loadFFmpeg().catch((err) => console.warn('[ffmpeg] preload failed:', err))
+    }
+    const timer = window.setTimeout(preload, 1200)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  function triggerDownload(blob: Blob, fileName: string) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function fetchClipBuffer(mp4Url: string) {
+    setStatus('Downloading video...')
+    const proxyUrl = new URL('/api/proxy-video', window.location.origin)
+    proxyUrl.searchParams.set('url', mp4Url)
+    const proxyRes = await fetch(proxyUrl.toString())
+    if (!proxyRes.ok) throw new Error(`Proxy failed (${proxyRes.status})`)
+    const buffer = await proxyRes.arrayBuffer()
+    if (buffer.byteLength === 0) throw new Error('Empty file')
+    return buffer
   }
 
   async function download(mode: DownloadMode) {
     setIsProcessing(true)
     try {
-      setStatus('Fetching MP4 URL…')
+      setStatus('Fetching MP4 URL...')
       const res = await fetch('/api/clip-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,43 +78,42 @@ export default function PreviewActions({
       const mp4Url = urlMap[clipId]
       if (!mp4Url) throw new Error('Could not get video URL')
 
-      setStatus('Loading FFmpeg…')
-      const ffmpeg = await loadFFmpeg()
-
-      setStatus('Downloading video…')
-      const proxyUrl = new URL('/api/proxy-video', window.location.origin)
-      proxyUrl.searchParams.set('url', mp4Url)
-      const proxyRes = await fetch(proxyUrl.toString())
-      if (!proxyRes.ok) throw new Error(`Proxy failed (${proxyRes.status})`)
-      const buffer = await proxyRes.arrayBuffer()
-      if (buffer.byteLength === 0) throw new Error('Empty file')
-      await ffmpeg.writeFile('input.mp4', new Uint8Array(buffer))
-
       const safeName = clipTitle.replace(/[^a-z0-9]/gi, '_')
 
-      if (mode === 'vertical') {
-        setStatus('Cropping to 9:16…')
+      if (mode === 'full') {
+        const buffer = await fetchClipBuffer(mp4Url)
+        triggerDownload(new Blob([buffer], { type: 'video/mp4' }), `${safeName}.mp4`)
+      } else {
+        setStatus('Loading FFmpeg...')
+        const ffmpeg = await loadFFmpeg()
+        const buffer = await fetchClipBuffer(mp4Url)
+
+        await ffmpeg.writeFile('input.mp4', new Uint8Array(buffer))
+        setStatus('Cropping to 9:16...')
         const exitCode = await ffmpeg.exec([
-          '-i', 'input.mp4',
-          '-vf', 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0',
-          '-c:a', 'copy',
+          '-i',
+          'input.mp4',
+          '-vf',
+          'crop=ih*9/16:ih:(iw-ih*9/16)/2:0',
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          '24',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '128k',
           'output.mp4',
         ])
         if (exitCode !== 0) throw new Error('Crop failed')
-      } else {
-        setStatus('Saving…')
-        const exitCode = await ffmpeg.exec(['-i', 'input.mp4', '-c', 'copy', 'output.mp4'])
-        if (exitCode !== 0) throw new Error('Copy failed')
-      }
 
-      const data = await ffmpeg.readFile('output.mp4') as Uint8Array
-      const blob = new Blob([data.buffer as ArrayBuffer], { type: 'video/mp4' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = mode === 'vertical' ? `${safeName}_9x16.mp4` : `${safeName}.mp4`
-      a.click()
-      URL.revokeObjectURL(url)
+        const data = (await ffmpeg.readFile('output.mp4')) as Uint8Array
+        triggerDownload(new Blob([data.buffer as ArrayBuffer], { type: 'video/mp4' }), `${safeName}_9x16.mp4`)
+        await ffmpeg.deleteFile('input.mp4').catch(() => {})
+        await ffmpeg.deleteFile('output.mp4').catch(() => {})
+      }
 
       setStatus('Done!')
       setTimeout(() => setStatus(''), 3000)
@@ -87,8 +121,6 @@ export default function PreviewActions({
       const message = err instanceof Error ? err.message : String(err)
       setStatus(`Error: ${message}`)
     } finally {
-      await ffmpegRef.current?.deleteFile('input.mp4').catch(() => {})
-      await ffmpegRef.current?.deleteFile('output.mp4').catch(() => {})
       setIsProcessing(false)
     }
   }
@@ -105,14 +137,14 @@ export default function PreviewActions({
           disabled={isProcessing}
           className="rounded-full bg-zinc-700 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-zinc-600 disabled:opacity-50"
         >
-          {isProcessing ? 'Processing…' : 'Download Full'}
+          {isProcessing ? 'Processing...' : 'Download Full'}
         </button>
         <button
           onClick={() => download('vertical')}
           disabled={isProcessing}
           className="rounded-full bg-purple-600 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-purple-500 disabled:opacity-50"
         >
-          {isProcessing ? 'Processing…' : 'Convert to 9:16 →'}
+          {isProcessing ? 'Processing...' : 'Convert to 9:16 ->'}
         </button>
       </div>
     </div>
