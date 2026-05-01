@@ -6,6 +6,7 @@ import { getTwitchClips } from '@/lib/twitch'
 import ClipGrid from '@/components/ClipGrid'
 
 export default async function Dashboard() {
+  const freeMode = process.env.FREE_MODE !== 'false'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/')
@@ -27,6 +28,11 @@ export default async function Dashboard() {
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-8">
       <div className="mx-auto max-w-6xl">
+        {freeMode && (
+          <div className="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+            Free access mode is active right now. Stripe subscriptions are temporarily disabled.
+          </div>
+        )}
         <div className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-4">
             {avatar_url && (

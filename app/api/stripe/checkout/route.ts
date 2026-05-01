@@ -4,6 +4,14 @@ import { stripe } from '@/lib/stripe'
 import { headers } from 'next/headers'
 
 export async function POST() {
+  const freeMode = process.env.FREE_MODE !== 'false'
+  if (freeMode) {
+    return NextResponse.json(
+      { error: 'Stripe checkout is temporarily disabled (free mode enabled).' },
+      { status: 503 }
+    )
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

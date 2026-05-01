@@ -36,6 +36,11 @@ async function upsertSubscription(
 }
 
 export async function POST(request: NextRequest) {
+  const freeMode = process.env.FREE_MODE !== 'false'
+  if (freeMode) {
+    return NextResponse.json({ received: true, skipped: 'free_mode' })
+  }
+
   const supabaseAdmin = getSupabaseAdmin()
   const body = await request.text()
   const sig = request.headers.get('stripe-signature')
