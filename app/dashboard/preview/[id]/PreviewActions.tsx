@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useRef, useState } from 'react'
 import { FFmpeg } from '@ffmpeg/ffmpeg'
@@ -54,6 +54,15 @@ export default function PreviewActions({
     URL.revokeObjectURL(url)
   }
 
+  function triggerDirectDownload(mp4Url: string, fileName: string) {
+    const proxyUrl = new URL('/api/proxy-video', window.location.origin)
+    proxyUrl.searchParams.set('url', mp4Url)
+    const a = document.createElement('a')
+    a.href = proxyUrl.toString()
+    a.download = fileName
+    a.click()
+  }
+
   async function fetchClipBuffer(mp4Url: string) {
     setStatus('Downloading video...')
     const proxyUrl = new URL('/api/proxy-video', window.location.origin)
@@ -81,8 +90,8 @@ export default function PreviewActions({
       const safeName = clipTitle.replace(/[^a-z0-9]/gi, '_')
 
       if (mode === 'full') {
-        const buffer = await fetchClipBuffer(mp4Url)
-        triggerDownload(new Blob([buffer], { type: 'video/mp4' }), `${safeName}.mp4`)
+        setStatus('Starting download...')
+        triggerDirectDownload(mp4Url, `${safeName}.mp4`)
       } else {
         setStatus('Loading FFmpeg...')
         const ffmpeg = await loadFFmpeg()
@@ -150,3 +159,4 @@ export default function PreviewActions({
     </div>
   )
 }
+

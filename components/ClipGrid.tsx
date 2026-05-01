@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
@@ -126,6 +126,15 @@ export default function ClipGrid({
     URL.revokeObjectURL(url)
   }
 
+  function triggerDirectDownload(mp4Url: string, fileName: string) {
+    const proxyUrl = new URL('/api/proxy-video', window.location.origin)
+    proxyUrl.searchParams.set('url', mp4Url)
+    const a = document.createElement('a')
+    a.href = proxyUrl.toString()
+    a.download = fileName
+    a.click()
+  }
+
   async function fetchClipBuffer(mp4Url: string, title: string) {
     setStatus(`Downloading "${title}"...`)
     const proxyUrl = new URL('/api/proxy-video', window.location.origin)
@@ -140,9 +149,9 @@ export default function ClipGrid({
   }
 
   async function downloadFull(mp4Url: string, title: string) {
-    const buffer = await fetchClipBuffer(mp4Url, title)
+    setStatus(`Starting download for "${title}"...`)
     const safeName = title.replace(/[^a-z0-9]/gi, '_')
-    triggerDownload(new Blob([buffer], { type: 'video/mp4' }), `${safeName}.mp4`)
+    triggerDirectDownload(mp4Url, `${safeName}.mp4`)
   }
 
   async function convertVertical(ffmpeg: FFmpeg, mp4Url: string, title: string) {
@@ -312,7 +321,7 @@ export default function ClipGrid({
                   className="absolute right-3 top-3 z-10 text-lg leading-none transition-transform hover:scale-125"
                   title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
                 >
-                  {isFavorited ? '♥' : '♡'}
+                  {isFavorited ? 'â™¥' : 'â™¡'}
                 </button>
 
                 <Link href={`/dashboard/preview/${clip.id}`} onClick={(e) => e.stopPropagation()}>
@@ -333,7 +342,7 @@ export default function ClipGrid({
                 <div className="p-4">
                   <h3 className="line-clamp-1 font-semibold text-zinc-100">{clip.title}</h3>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {clip.view_count.toLocaleString()} views {' • '}
+                    {clip.view_count.toLocaleString()} views {' â€¢ '}
                     {new Date(clip.created_at).toLocaleDateString()}
                   </p>
                 </div>
@@ -357,3 +366,4 @@ export default function ClipGrid({
     </div>
   )
 }
+
