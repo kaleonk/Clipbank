@@ -1,11 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function Home() {
+  const [callbackError, setCallbackError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setCallbackError(params.get('error'))
+  }, [])
 
   async function loginWithTwitch() {
     setError(null)
@@ -40,6 +46,11 @@ export default function Home() {
         {error && (
           <p className="max-w-sm rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
             {error}
+          </p>
+        )}
+        {!error && callbackError && (
+          <p className="max-w-sm rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+            {callbackError}
           </p>
         )}
       </div>
