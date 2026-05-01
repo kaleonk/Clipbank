@@ -22,12 +22,19 @@ export default function Home() {
       currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')
     const productionOrigin =
       (process.env.NEXT_PUBLIC_SITE_URL || 'https://clipbank.vercel.app').replace(/\/$/, '')
-    const redirectOrigin = isLocalhost ? currentOrigin : productionOrigin
+
+    // PKCE requires auth start + callback on the same origin.
+    // If user is on a preview/custom host, ask them to use the main production domain.
+    if (!isLocalhost && currentOrigin !== productionOrigin) {
+      setError(`Please open ${productionOrigin} and login there.`)
+      setLoading(false)
+      return
+    }
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'twitch',
       options: {
-        redirectTo: `${redirectOrigin}/auth/callback`,
+        redirectTo: `${currentOrigin}/auth/callback`,
       },
     })
     if (error) {
